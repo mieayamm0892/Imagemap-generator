@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>osu imagemap mobile</title>
+    
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.13.0/jquery-ui.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui-touch-punch/0.2.3/jquery.ui.touch-punch.min.js"></script>
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.0/themes/base/jquery-ui.css">
+
+    <style>
+        body { 
+            background: #121212; 
+            color: #efefef; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            padding: 20px;
+            margin: 0;
+        }
+        .container { max-width: 900px; margin: auto; }
+        .card { 
+            background: #1e1e1e; 
+            padding: 20px; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+        }
+        input, textarea { 
+            width: 100%; 
+            padding: 12px; 
+            margin: 10px 0; 
+            background: #2d2d2d; 
+            border: 1px solid #444; 
+            color: #fff; 
+            border-radius: 6px;
+            box-sizing: border-box;
+        }
+        button { 
+            background: #ff66aa; 
+            color: white; 
+            border: none; 
+            padding: 12px 20px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-weight: bold;
+            width: 100%;
+        }
+        button:hover { background: #ff4499; }
+        
+        .preview-wrapper { 
+            position: relative; 
+            display: inline-block; 
+            margin-top: 20px;
+            border: 2px dashed #444;
+            min-width: 200px;
+            min-height: 100px;
+        }
+        #mainImg { 
+            display: block; 
+            max-width: 100%; 
+            height: auto; 
+            background: #000;
+        }
+       /* Keadaan awal (Diam) */
+.box { 
+    position: absolute; 
+    border: 2px solid rgba(255, 255, 255, 0.5); /* Putih transparan */
+    background: rgba(255, 255, 255, 0.1);
+    box-sizing: border-box;
+    cursor: move;
+    z-index: 10;
+}
+
+/* Keadaan pas DIKLIK (Aktif) */
+.box.active { 
+    border-color: #ff66aa !important; /* Pink osu! */
+    background: rgba(255, 102, 170, 0.3) !important;
+    box-shadow: 0 0 15px rgba(255, 102, 170, 0.5);
+    z-index: 20;
+}
+        .bbcode-box { 
+            font-family: monospace; 
+            height: 150px; 
+            color: #a3be8c;
+        }
+        .box-config {
+            border-top: 1px solid #444;
+            margin-top: 15px;
+            padding-top: 15px;
+            display: none; /* Muncul pas kotak diklik */
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="card">
+        <h2>osu! Imagemap Generator Hp</h2>
+        <label>Image URL:</label>
+        <input type="text" id="imgUrl" placeholder="Paste image link (https://...)" oninput="handleImageUpdate()">
+        
+        <button onclick="addBox()">+ Add Clickable Box</button>
+        
+        <div class="preview-wrapper" id="previewArea">
+            <img src="https://via.placeholder.com/600x300?text=Paste+URL+Above" id="mainImg">
+        </div>
+
+        <div id="boxSettings" class="box-config">
+     
+            <input type="text" id="boxUrl" placeholder="https://google.com" oninput="updateCurrentBox()">
+            <label>Hover Text:</label>
+            <input type="text" id="boxHover" placeholder="Click here!" oninput="updateCurrentBox()">
+            <button onclick="deleteBox()" style="background: #ef4444; margin-top: 10px;">Delete Selected Box</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>BBCode Output</h3>
+        <textarea id="output" class="bbcode-box" readonly></textarea>
+        <button style="background: #444;" onclick="copyCode()">Copy BBCode</button>
+    </div>
+</div>
+
+<script>
+    let boxes = [];
+    let selectedBoxId = null;
+
+    function handleImageUpdate() {
+        const url = document.getElementById('imgUrl').value;
+        const img = document.getElementById('mainImg');
+        img.src = url;
+        img.onload = () => generateBBCode();
+    }
+
+    function addBox() {
+        const id = "box-" + Date.now();
+        // Default data
+        const boxData = { id: id, x: 10, y: 10, w: 20, h: 15, url: 'https://osu.ppy.sh', hover: '' };
+        boxes.push(boxData);
+
+        const boxEl = $(`<div id="${id}" class="box" style="left:10%; top:10%; width:20%; height:15%;"></div>`);
+        $('#previewArea').append(boxEl);
+
+        // Pas klik kotak, munculin settingannya
+        boxEl.on('click', function(e) {
+            e.stopPropagation();
+            selectBox(id);
+        });
+
+        boxEl.draggable({
+            containment: "parent",
+            drag: function(e, ui) { syncData(id, ui.position, $(this).width(), $(this).height()); },
+            stop: function(e, ui) { syncData(id, ui.position, $(this).width(), $(this).height()); }
+        }).resizable({
+            containment: "parent",
+            handles: "all",
+            resize: function(e, ui) { syncData(id, ui.position, ui.size.width, ui.size.height); },
+            stop: function(e, ui) { syncData(id, ui.position, ui.size.width, ui.size.height); }
+        });
+
+        selectBox(id);
+        generateBBCode();
+    }
+
+    function selectBox(id) {
+        selectedBoxId = id;
+        $('.box').removeClass('active');
+        $(`#${id}`).addClass('active');
+
+        const box = boxes.find(b => b.id === id);
+        if (box) {
+            document.getElementById('boxSettings').style.display = 'block';
+            document.getElementById('boxUrl').value = box.url;
+            document.getElementById('boxHover').value = box.hover;
+            document.getElementById('settingsTitle').innerText = "Settings for " + id;
+        }
+    }
+
+    // Pas input URL/Hover di form, datanya update ke array
+    function updateCurrentBox() {
+        if (!selectedBoxId) return;
+        const box = boxes.find(b => b.id === selectedBoxId);
+        if (box) {
+            box.url = document.getElementById('boxUrl').value;
+            box.hover = document.getElementById('boxHover').value;
+            generateBBCode();
+        }
+    }
+
+    function syncData(id, pos, width, height) {
+        const img = document.getElementById('mainImg');
+        const box = boxes.find(b => b.id === id);
+        if (box && img.clientWidth > 0) {
+            box.x = ((pos.left / img.clientWidth) * 100).toFixed(2);
+            box.y = ((pos.top / img.clientHeight) * 100).toFixed(2);
+            box.w = ((width / img.clientWidth) * 100).toFixed(2);
+            box.h = ((height / img.clientHeight) * 100).toFixed(2);
+            generateBBCode();
+        }
+    }
+
+    function deleteBox() {
+        if (!selectedBoxId) return;
+        $(`#${selectedBoxId}`).remove();
+        boxes = boxes.filter(b => b.id !== selectedBoxId);
+        document.getElementById('boxSettings').style.display = 'none';
+        selectedBoxId = null;
+        generateBBCode();
+    }
+
+    function generateBBCode() {
+        const url = document.getElementById('imgUrl').value || document.getElementById('mainImg').src;
+        let bb = `[imagemap]\n${url}\n`;
+        boxes.forEach(b => {
+            // Format: x y w h url hover
+            bb += `${b.x} ${b.y} ${b.w} ${b.h} ${b.url} ${b.hover}\n`;
+        });
+        bb += `[/imagemap]`;
+        document.getElementById('output').value = bb.trim();
+    }
+
+    // Klik di area gambar buat deselect
+    $('#previewArea').on('click', function() {
+        $('.box').removeClass('active');
+        document.getElementById('boxSettings').style.display = 'none';
+        selectedBoxId = null;
+    });
+
+    function copyCode() {
+        const copyText = document.getElementById("output");
+        copyText.select();
+        document.execCommand("copy");
+        alert("BBCode copied!");
+    }
+</script>
+
+</body>
+</html>
